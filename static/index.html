@@ -1,0 +1,189 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>YOLOE Cam Filter</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; background: #0b0b0b; color: #f1f1f1; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 24px; align-items: start; }
+    .card { background: #141414; border: 1px solid #272727; border-radius: 10px; padding: 16px; }
+    .controls { width: 100%; }
+    .sidebar { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+    h2 { margin: 0 0 8px; font-size: 18px; }
+    input[type=text] { width: 100%; padding: 8px 10px; background: #0e0e0e; color: #fff; border: 1px solid #333; border-radius: 8px; }
+    button { background: #2a7bff; color: white; border: 0; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+    button.ghost { background: transparent; border: 1px solid #3a3a3a; }
+    ul { list-style: none; padding: 0; margin: 8px 0 0; }
+    li { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dashed #2b2b2b; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .hint { color: #aaa; font-size: 12px; }
+    .stream { min-width: 0; }
+    .stream img { width: 100%; height: auto; max-height: calc(100vh - 140px); object-fit: contain; background: #000; }
+    @media (max-width: 1000px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; max-height: none; }
+    }
+  </style>
+  <script>
+    async function refreshTargets() {
+      const res = await fetch('/targets');
+      const data = await res.json();
+      const list = document.getElementById('targets');
+      list.innerHTML = '';
+      data.forEach(name => {
+        const li = document.createElement('li');
+        li.textContent = name;
+        const btn = document.createElement('button');
+        btn.textContent = 'Remove';
+        btn.className = 'ghost';
+        btn.onclick = async () => {
+          const fd = new FormData();
+          fd.append('name', name);
+          await fetch('/targets/remove', { method: 'POST', body: fd });
+          refreshTargets();
+        };
+        li.appendChild(btn);
+        list.appendChild(li);
+      });
+    }
+    async function refreshSettings() {
+      const res = await fetch('/settings');
+      const s = await res.json();
+      document.getElementById('conf').value = s.conf;
+      document.getElementById('mask_conf').value = s.mask_conf;
+      document.getElementById('imgsz').value = s.imgsz;
+      await populateDevices(s.device || '');
+      // document.getElementById('model').value = s.model || '';
+      document.getElementById('source').value = s.source;
+    }
+    async function populateDevices(current) {
+      const sel = document.getElementById('device');
+      sel.innerHTML = '';
+      try {
+        const res = await fetch('/devices');
+        const devices = await res.json();
+        devices.forEach(d => {
+          const opt = document.createElement('option');
+          opt.value = d.id;
+          opt.textContent = d.label;
+          sel.appendChild(opt);
+        });
+      } catch (e) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'Default';
+        sel.appendChild(opt);
+        const opt2 = document.createElement('option');
+        opt2.value = 'cpu';
+        opt2.textContent = 'CPU';
+        sel.appendChild(opt2);
+      }
+      sel.value = current;
+    }
+    async function addTarget(e) {
+      e.preventDefault();
+      const name = document.getElementById('newTarget').value.trim();
+      if (!name) return;
+      const fd = new FormData();
+      fd.append('name', name);
+      await fetch('/targets/add', { method: 'POST', body: fd });
+      document.getElementById('newTarget').value = '';
+      refreshTargets();
+    }
+    async function clearTargets() {
+      await fetch('/targets/clear', { method: 'POST' });
+      refreshTargets();
+    }
+    async function uploadOverlay(e) {
+      e.preventDefault();
+      const fileInput = document.getElementById('overlayFile');
+      if (!fileInput.files.length) return;
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+      const res = await fetch('/overlay/upload', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const txt = await res.text();
+        alert('Upload failed: ' + txt);
+      } else {
+        alert('Overlay updated');
+      }
+      fileInput.value = '';
+    }
+    async function applySettings(e) {
+      e.preventDefault();
+      const fd = new FormData();
+      fd.append('conf', document.getElementById('conf').value);
+      fd.append('mask_conf', document.getElementById('mask_conf').value);
+      fd.append('imgsz', document.getElementById('imgsz').value);
+      const dev = document.getElementById('device').value.trim();
+      if (dev) fd.append('device', dev);
+      // const model = document.getElementById('model').value.trim();
+      // if (model) fd.append('model', model);
+      const source = document.getElementById('source').value.trim();
+      if (source) fd.append('source', source);
+      const res = await fetch('/settings', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const txt = await res.text();
+        alert('Failed to apply settings: ' + txt);
+      } else {
+        const img = document.getElementById('stream');
+        const url = new URL(img.src, window.location.origin);
+        url.searchParams.set('debug', document.getElementById('debug').checked ? '1' : '0');
+        url.searchParams.set('conf', document.getElementById('conf').value);
+        url.searchParams.set('mask_conf', document.getElementById('mask_conf').value);
+        img.src = url.toString();
+      }
+    }
+    window.addEventListener('DOMContentLoaded', () => {
+      refreshTargets();
+      refreshSettings();
+      const img = document.getElementById('stream');
+      img.src = '/stream?debug=0';
+    });
+  </script>
+  </head>
+<body>
+  <h1>YOLOE Cam Filter</h1>
+  <div class="layout">
+    <div class="card stream">
+      <h2>Live</h2>
+      <img id="stream" alt="stream" />
+    </div>
+    <div class="sidebar">
+      <div class="card controls">
+        <h2>Targets</h2>
+        <form onsubmit="addTarget(event)" class="grid">
+          <input id="newTarget" type="text" placeholder="e.g., cell phone, cup" />
+          <button type="submit">Add</button>
+        </form>
+        <div style="margin-top:8px"><button class="ghost" onclick="clearTargets()">Clear all</button></div>
+        <ul id="targets"></ul>
+      </div>
+      <div class="card controls">
+        <h2>Overlay</h2>
+        <form onsubmit="uploadOverlay(event)">
+          <input id="overlayFile" type="file" accept=".png,.gif" />
+          <div style="margin-top:8px"><button type="submit">Upload</button></div>
+        </form>
+        <div class="hint">PNG or GIF with alpha is supported.</div>
+      </div>
+      <div class="card controls">
+        <h2>Settings</h2>
+        <form onsubmit="applySettings(event)" class="grid">
+          <label>Conf<input id="conf" type="number" step="0.01" min="0" max="1" /></label>
+          <label>Mask Conf<input id="mask_conf" type="number" step="0.01" min="0" max="1" /></label>
+          <label>Img Size<input id="imgsz" type="number" min="64" step="32" /></label>
+          <label>Device<select id="device"></select></label>
+          <!-- <label>Model<input id="model" type="text" placeholder="/path/to/model.pt" /></label> -->
+          <label>Source<input id="source" type="text" placeholder="0 or file path" /></label>
+          <label style="display:flex;align-items:center;gap:8px;">Debug<input id="debug" type="checkbox" /></label>
+          <div style="grid-column:1/-1; margin-top:8px;"><button type="submit">Apply</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+
