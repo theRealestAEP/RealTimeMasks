@@ -6,7 +6,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .processor import OverlayProcessor
+from processor import OverlayProcessor
 
 
 BASE_DIR = Path(__file__).resolve().parent

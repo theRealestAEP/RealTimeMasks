@@ -5,13 +5,23 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="${SCRIPT_DIR}"
 
-VENV_DIR="${ROOT_DIR}/myenv"
+# Prefer active venv, else use .venv, else myenv (AI Generated kinda sloppy but w/e it works)
+if [[ -n "${VIRTUAL_ENV:-}" && -x "${VIRTUAL_ENV}/bin/uvicorn" ]]; then
+  VENV_DIR="${VIRTUAL_ENV}"
+elif [[ -x "${ROOT_DIR}/.venv/bin/uvicorn" ]]; then
+  VENV_DIR="${ROOT_DIR}/.venv"
+elif [[ -x "${ROOT_DIR}/myenv/bin/uvicorn" ]]; then
+  VENV_DIR="${ROOT_DIR}/myenv"
+else
+  VENV_DIR="${ROOT_DIR}/.venv"
+fi
 UVICORN_BIN="${VENV_DIR}/bin/uvicorn"
 PYTHON_BIN="${VENV_DIR}/bin/python"
 
 if [[ ! -x "${UVICORN_BIN}" ]]; then
   echo "[ERROR] Uvicorn not found at ${UVICORN_BIN}. Activate/install venv first:" >&2
-  echo "       python3 -m venv '${VENV_DIR}' && source '${VENV_DIR}/bin/activate' && pip install -r '${ROOT_DIR}/requirements.txt'" >&2
+  echo "       ./setup.sh" >&2
+  echo "    or python3 -m venv '${VENV_DIR}' && source '${VENV_DIR}/bin/activate' && pip install -r '${ROOT_DIR}/requirements.txt'" >&2
   exit 1
 fi
 
@@ -66,6 +76,6 @@ echo "[INFO] Model=${YOLO_MODEL} Device=${YOLO_DEVICE:-<default>} ImgSz=${YOLO_I
 # Prevent mixing global site-packages
 export PYTHONNOUSERSITE=1
 
-exec "${UVICORN_BIN}" yoloe_cam_filter_webapp.server:create_app --factory --host "${HOST}" --port "${PORT}" ${RELOAD}
+exec "${UVICORN_BIN}" server:create_app --factory --host "${HOST}" --port "${PORT}" ${RELOAD}
 
 
